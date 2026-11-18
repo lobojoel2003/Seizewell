@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
   workflow_call:
     inputs:
-      build:
-        description: Also build the Android and iOS apps
+      skip_builds:
+        description: Skip the Android and iOS build jobs (the caller builds)
         type: boolean
-        default: true
+        default: false
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -64,7 +64,8 @@ jobs:
   android:
     name: Android build
     needs: check
-    if: ${{ inputs.build != false }}
+    # Absent on push/pull_request, so the builds run there.
+    if: ${{ !inputs.skip_builds }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -99,7 +100,8 @@ jobs:
   ios:
     name: iOS build
     needs: check
-    if: ${{ inputs.build != false }}
+    # Absent on push/pull_request, so the builds run there.
+    if: ${{ !inputs.skip_builds }}
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
