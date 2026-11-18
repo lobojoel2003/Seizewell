@@ -3,7 +3,7 @@
 //
 //   flutter test screenshots/generate_test.dart
 //
-// Output: docs/images/screens/*.png (1170×2532, 3× of a 390×844 phone).
+// Output: docs/images/screens/*.png (780×1688, 2× of a 390×844 phone).
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -39,7 +39,7 @@ Future<void> _shot(WidgetTester tester, String name) async {
   final boundary =
       _boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
   await tester.runAsync(() async {
-    final image = await boundary.toImage(pixelRatio: 3);
+    final image = await boundary.toImage(pixelRatio: 2);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     final file = File('$_outDir/$name.png');
     await file.parent.create(recursive: true);
@@ -137,10 +137,18 @@ void main() {
     await tester.tap(find.text(insightRanges[180]!));
     await h.settle(tester);
     await _shot(tester, '08-insights');
-    await tester.drag(find.byType(Scrollable).last, const Offset(0, -560));
+    final list = tester.state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byType(InsightsScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    list.position.jumpTo(452);
     await h.settle(tester);
     await _shot(tester, '09-insights-calendar');
-    await tester.drag(find.byType(Scrollable).last, const Offset(0, -1150));
+    list.position.jumpTo(1118);
     await h.settle(tester);
     await _shot(tester, '10-insights-trend');
     await h.dispose(tester);

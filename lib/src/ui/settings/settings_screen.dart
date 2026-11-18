@@ -219,33 +219,43 @@ class SettingsScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-                      child: Row(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            Icons.dark_mode_rounded,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: 16),
-                          const Expanded(child: Text('Theme')),
-                          SegmentedButton<AppThemeMode>(
-                            showSelectedIcon: false,
-                            segments: const [
-                              ButtonSegment(
-                                value: AppThemeMode.system,
-                                label: Text('Auto'),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.dark_mode_rounded,
+                                color: theme.colorScheme.primary,
                               ),
-                              ButtonSegment(
-                                value: AppThemeMode.light,
-                                label: Text('Light'),
-                              ),
-                              ButtonSegment(
-                                value: AppThemeMode.dark,
-                                label: Text('Dark'),
-                              ),
+                              const SizedBox(width: 16),
+                              const Text('Theme'),
                             ],
-                            selected: {st.themeMode},
-                            onSelectionChanged: (v) => st.setThemeMode(v.first),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: SegmentedButton<AppThemeMode>(
+                              showSelectedIcon: false,
+                              segments: const [
+                                ButtonSegment(
+                                  value: AppThemeMode.system,
+                                  label: Text('Auto'),
+                                ),
+                                ButtonSegment(
+                                  value: AppThemeMode.light,
+                                  label: Text('Light'),
+                                ),
+                                ButtonSegment(
+                                  value: AppThemeMode.dark,
+                                  label: Text('Dark'),
+                                ),
+                              ],
+                              selected: {st.themeMode},
+                              onSelectionChanged: (v) =>
+                                  st.setThemeMode(v.first),
+                            ),
                           ),
                         ],
                       ),

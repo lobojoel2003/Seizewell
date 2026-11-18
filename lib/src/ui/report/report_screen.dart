@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:material_ui/material_ui.dart';
-import 'package:printing/printing.dart';
 
 import '../../app_services.dart';
 import '../../data/database.dart';
@@ -15,6 +14,10 @@ import '../insights/insights_screen.dart' show insightRanges;
 import '../widgets/common.dart';
 
 ReportFonts? _fonts;
+
+/// Loads (and caches) the fonts embedded in the clinic report.
+Future<ReportFonts> loadReportFonts() async =>
+    _fonts ??= await ReportFonts.load(rootBundle);
 
 /// Builds the clinic report PDF for the last [days] days.
 Future<Uint8List> generateClinicReport(
@@ -31,7 +34,7 @@ Future<Uint8List> generateClinicReport(
     sleep: await s.db.allSleep(),
     prolongedThreshold: s.settings.plan.alertAfter,
   );
-  _fonts ??= await ReportFonts.load(rootBundle);
+  final fonts = await loadReportFonts();
   return buildClinicReport(
     ReportData(
       stats: stats,
@@ -43,7 +46,7 @@ Future<Uint8List> generateClinicReport(
       dateOfBirth: s.settings.dateOfBirth,
       paperSize: paper ?? s.settings.paperSize,
     ),
-    _fonts!,
+    fonts,
   );
 }
 
@@ -63,7 +66,8 @@ class ReportScreen extends StatefulWidget {
 class _ReportScreenState extends State<ReportScreen> {
   late int _days = widget.initialDays;
   late PaperSize _paper = context.services.settings.paperSize;
-  Future<(Uint8List, Uint8List?)>? _job;
+  Future<Uint8List>? _pdf;
+  Future<Uint8List?>? _preview;
 
   @override
   void initState() {
@@ -73,19 +77,9 @@ class _ReportScreenState extends State<ReportScreen> {
 
   void _rebuild() {
     final s = context.services;
-    _job = () async {
-      final pdf = await generateClinicReport(s, days: _days, paper: _paper);
-      Uint8List? preview;
-      try {
-        await for (final page in Printing.raster(pdf, dpi: 96)) {
-          preview = await page.toPng();
-          break;
-        }
-      } on Object {
-        preview = null;
-      }
-      return (pdf, preview);
-    }();
+    final pdf = generateClinicReport(s, days: _days, paper: _paper);
+    _pdf = pdf;
+    _preview = pdf.then(s.platform.renderPdfPreview);
   }
 
   String get _fileName {
@@ -100,11 +94,8 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Future<void> _print(Uint8List pdf) async {
-    try {
-      await Printing.layoutPdf(onLayout: (_) async => pdf, name: _fileName);
-    } on Object {
-      if (mounted) showMessage(context, 'Printing is not available.');
-    }
+    final ok = await context.services.platform.printPdf(pdf, _fileName);
+    if (!ok && mounted) showMessage(context, 'Printing is not available.');
   }
 
   @override
@@ -113,11 +104,10 @@ class _ReportScreenState extends State<ReportScreen> {
     final s = context.services;
     return Scaffold(
       appBar: AppBar(title: const Text('Clinic report')),
-      body: FutureBuilder<(Uint8List, Uint8List?)>(
-        future: _job,
+      body: FutureBuilder<Uint8List>(
+        future: _pdf,
         builder: (context, snap) {
-          final ready =
-              snap.connectionState == ConnectionState.done && snap.hasData;
+          final pdf = snap.data;
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             children: [
@@ -177,33 +167,43 @@ class _ReportScreenState extends State<ReportScreen> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: !ready
-                        ? const Center(child: CircularProgressIndicator())
-                        : snap.data!.$2 == null
-                        ? const Center(
+                    child: FutureBuilder<Uint8List?>(
+                      future: _preview,
+                      builder: (context, preview) {
+                        if (preview.connectionState != ConnectionState.done) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+                        final png = preview.data;
+                        if (png == null) {
+                          return const Center(
                             child: Icon(
                               Icons.picture_as_pdf_rounded,
                               size: 64,
                               color: Colors.black26,
                             ),
-                          )
-                        : Image.memory(
-                            snap.data!.$2!,
-                            fit: BoxFit.contain,
-                            semanticLabel: 'Preview of the clinic report',
-                          ),
+                          );
+                        }
+                        return Image.memory(
+                          png,
+                          fit: BoxFit.contain,
+                          semanticLabel: 'Preview of the clinic report',
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
               FilledButton.icon(
-                onPressed: ready ? () => _share(snap.data!.$1) : null,
+                onPressed: pdf == null ? null : () => _share(pdf),
                 icon: const Icon(Icons.ios_share_rounded),
                 label: const Text('Share PDF'),
               ),
               const SizedBox(height: 10),
               OutlinedButton.icon(
-                onPressed: ready ? () => _print(snap.data!.$1) : null,
+                onPressed: pdf == null ? null : () => _print(pdf),
                 icon: const Icon(Icons.print_rounded),
                 label: const Text('Print'),
               ),

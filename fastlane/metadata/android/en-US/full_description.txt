@@ -1,0 +1,32 @@
+<p>Neurologists adjust epilepsy treatment from what patients report, and memory of seizures is poor. A diary fixes that — but seizure records are some of the most sensitive health data there is. <b>Seizewell keeps everything on your phone.</b></p>
+
+<p><b>One tap when it matters</b></p>
+<ul>
+<li>A huge Start button, also on a home-screen widget, a Quick Settings tile that works from the lock screen, and the app-icon shortcuts.</li>
+<li>A clear stopwatch that turns red at 5 minutes and shows your family's own emergency plan: rescue medication, dose, who to call and your neurologist's steps.</li>
+<li>"Rescue given" starts the rescue-medication timer and tells you when to call for help.</li>
+<li>Alerts keep coming even if you switch to the phone app to call.</li>
+</ul>
+
+<p><b>Details later, calmly</b></p>
+<ul>
+<li>Seizure types explained in plain language (based on the ILAE 2017 classification), triggers, aura, sleep, injuries, rescue medication and notes.</li>
+<li>Medications with start, dose-change and stop history; a sleep log.</li>
+</ul>
+
+<p><b>A one-page report for the clinic</b></p>
+<ul>
+<li>Calendar heat map, counts by seizure type, and medication changes marked on the timeline.</li>
+<li>Insights over 30 days to a year: trends, triggers, and sleep before seizures.</li>
+<li>Export as CSV or FHIR R4 for clinic and research systems.</li>
+</ul>
+
+<p><b>Private by design</b></p>
+<ul>
+<li>No account, no cloud, no ads, no analytics. The app has no internet permission.</li>
+<li>Encrypted with SQLCipher (AES-256); the key lives in the Android Keystore.</li>
+<li>Optional fingerprint lock that never blocks the Start button.</li>
+<li>Encrypted, passphrase-protected backups to move to a new phone.</li>
+</ul>
+
+<p>Seizewell is free and open-source software (GPL-3.0). It is a diary, not a medical device: it does not diagnose, detect or treat seizures. In an emergency, call your local emergency number.</p>

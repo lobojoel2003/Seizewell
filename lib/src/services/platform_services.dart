@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -66,6 +67,13 @@ abstract interface class PlatformBridge {
 
   /// Removes temporary export files left behind by earlier shares.
   Future<void> clearExportCache();
+
+  /// Renders the first page of [pdf] as a PNG for an on-screen preview, or
+  /// returns null if the platform cannot.
+  Future<Uint8List?> renderPdfPreview(Uint8List pdf);
+
+  /// Opens the system print dialog. Returns false if printing failed.
+  Future<bool> printPdf(Uint8List pdf, String name);
 }
 
 class DevicePlatformBridge implements PlatformBridge {
@@ -111,6 +119,33 @@ class DevicePlatformBridge implements PlatformBridge {
       ShareParams(files: xfiles, subject: subject),
     );
     return result.status != ShareResultStatus.dismissed;
+  }
+
+  @override
+  Future<Uint8List?> renderPdfPreview(Uint8List pdf) async {
+    try {
+      // The plugin never completes the stream if rasterising is
+      // unsupported, so give up after a while.
+      final page = await Printing.raster(
+        pdf,
+        pages: const [0],
+        dpi: 110,
+      ).first.timeout(const Duration(seconds: 20));
+      return await page.toPng();
+    } on Object catch (e) {
+      debugPrint('PDF preview unavailable: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<bool> printPdf(Uint8List pdf, String name) async {
+    try {
+      return await Printing.layoutPdf(onLayout: (_) async => pdf, name: name);
+    } on Object catch (e) {
+      debugPrint('Printing failed: $e');
+      return false;
+    }
   }
 
   @override

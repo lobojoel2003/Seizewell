@@ -296,6 +296,7 @@ class _ActiveSeizureScreenState extends State<ActiveSeizureScreen> {
                   now: now,
                 ),
               ),
+              _ContactButtons(plan: plan, onDial: (n) => _s.platform.dial(n)),
             ],
           ),
         ),
@@ -658,20 +659,8 @@ class _ActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    ButtonStyle style({required bool strong}) => FilledButton.styleFrom(
-      backgroundColor: strong
-          ? Colors.white
-          : Colors.white.withValues(alpha: 0.12),
-      foregroundColor: strong ? alertDeep : Colors.white,
-      minimumSize: const Size(0, 60),
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      textStyle: const TextStyle(
-        fontFamily: 'Inter',
-        fontWeight: FontWeight.w700,
-        fontSize: 15,
-      ),
-    );
+    ButtonStyle style({required bool strong}) =>
+        _timerButtonStyle(strong: strong);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -700,11 +689,40 @@ class _ActionRow extends StatelessWidget {
             ),
           ],
         ),
+      ],
+    );
+  }
+}
+
+ButtonStyle _timerButtonStyle({required bool strong}) => FilledButton.styleFrom(
+  backgroundColor: strong ? Colors.white : Colors.white.withValues(alpha: 0.12),
+  foregroundColor: strong ? alertDeep : Colors.white,
+  minimumSize: const Size(0, 60),
+  padding: const EdgeInsets.symmetric(horizontal: 14),
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+  textStyle: const TextStyle(
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w700,
+    fontSize: 15,
+  ),
+);
+
+class _ContactButtons extends StatelessWidget {
+  const _ContactButtons({required this.plan, required this.onDial});
+
+  final EmergencyPlan plan;
+  final ValueChanged<String> onDial;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         for (final c in plan.contacts.where((c) => c.phone.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: FilledButton.icon(
-              style: style(strong: false),
+              style: _timerButtonStyle(strong: false),
               onPressed: () => onDial(c.phone),
               icon: const Icon(Icons.person_rounded),
               label: Text('Call ${c.name.isEmpty ? c.phone : c.name}'),

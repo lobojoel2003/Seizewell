@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:seizewell/src/app.dart';
@@ -72,6 +74,17 @@ class FakePlatform implements PlatformBridge {
 
   @override
   Future<void> clearExportCache() async {}
+
+  @override
+  Future<Uint8List?> renderPdfPreview(Uint8List pdf) async => null;
+
+  final printed = <String>[];
+
+  @override
+  Future<bool> printPdf(Uint8List pdf, String name) async {
+    printed.add(name);
+    return true;
+  }
 }
 
 class FakeAuth implements DeviceAuth {

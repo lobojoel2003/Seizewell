@@ -1,0 +1,249 @@
+name: Release
+
+# Push a tag like v1.2.3 (matching "version: 1.2.3+N" in pubspec.yaml) to
+# build, sign and publish a GitHub release. See docs/RELEASING.md.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build, e.g. v1.0.0
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.50.0'
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  prepare:
+    name: Check version & notes
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.version.outputs.build }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Read version from pubspec.yaml
+        id: version
+        run: |
+          line="$(grep -E '^version:' pubspec.yaml | head -1)"
+          full="${line#version: }"
+          version="${full%%+*}"
+          build="${full##*+}"
+          echo "pubspec version: $version (build $build), tag: $TAG"
+          if [[ "v$version" != "$TAG" ]]; then
+            echo "::error::Tag $TAG does not match pubspec.yaml version $version"
+            exit 1
+          fi
+          if ! [[ "$build" =~ ^[0-9]+$ ]]; then
+            echo "::error::Build number '$build' must be an integer"
+            exit 1
+          fi
+          prerelease=false
+          [[ "$version" == *-* ]] && prerelease=true
+          {
+            echo "version=$version"
+            echo "build=$build"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes from CHANGELOG.md
+        run: scripts/changelog_section.sh "${{ steps.version.outputs.version }}" > release-notes.md
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  test:
+    name: Tests
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    with:
+      build: false
+
+  android:
+    name: Android (APK + AAB)
+    needs: [prepare, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Set up release signing
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [[ -n "$KEYSTORE_BASE64" ]]; then
+            path="$RUNNER_TEMP/seizewell-release.jks"
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$path"
+            {
+              echo "SEIZEWELL_KEYSTORE_PATH=$path"
+              echo "SEIZEWELL_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "SEIZEWELL_KEY_ALIAS=$KEY_ALIAS"
+              echo "SEIZEWELL_KEY_PASSWORD=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+            } >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "Signing with the release keystore."
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set. APKs are signed with a temporary debug key. See docs/RELEASING.md."
+          fi
+
+      - run: flutter pub get
+
+      - name: Build APKs (one per ABI)
+        run: |
+          flutter build apk --release --split-per-abi
+          mkdir -p dist
+          apk=build/app/outputs/flutter-apk
+          cp "$apk/app-arm64-v8a-release.apk"   "dist/Seizewell-$VERSION-arm64-v8a.apk"
+          cp "$apk/app-armeabi-v7a-release.apk" "dist/Seizewell-$VERSION-armeabi-v7a.apk"
+          cp "$apk/app-x86_64-release.apk"      "dist/Seizewell-$VERSION-x86_64.apk"
+
+      - name: Build universal APK
+        run: |
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/Seizewell-$VERSION-universal.apk"
+
+      - name: Build app bundle (Google Play)
+        run: |
+          flutter build appbundle --release
+          cp build/app/outputs/bundle/release/app-release.aab "dist/Seizewell-$VERSION.aab"
+
+      - name: Verify the app cannot use the network
+        run: |
+          for apk in dist/*.apk; do
+            scripts/check_apk_permissions.sh "$apk"
+          done
+
+      - name: Record signing state
+        run: |
+          echo "${{ steps.signing.outputs.signed }}" > dist/.android-signed
+          ls -la dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android
+          path: dist/
+          include-hidden-files: true
+
+  ios:
+    name: iOS (unsigned IPA)
+    needs: [prepare, test]
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build iOS app (unsigned)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package IPA
+        run: |
+          mkdir -p dist Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qry "dist/Seizewell-$VERSION-ios-unsigned.ipa" Payload
+          ls -la dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios
+          path: dist/
+
+  publish:
+    name: Publish GitHub release
+    needs: [prepare, android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Assemble files and checksums
+        run: |
+          mkdir -p dist
+          find artifacts/android artifacts/ios -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.ipa' \) -exec cp {} dist/ \;
+          (cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          cp artifacts/release-notes/release-notes.md notes.md
+          if [[ "$(cat artifacts/android/.android-signed)" != "true" ]]; then
+            cat >> notes.md <<'NOTE'
+
+          > [!NOTE]
+          > These Android builds are signed with a temporary key generated in CI, because no release keystore is configured for this repository yet. They install and run normally, but a future build signed with the permanent key will need a fresh install (export an encrypted backup first). See [docs/RELEASING.md](https://github.com/${{ github.repository }}/blob/main/docs/RELEASING.md).
+          NOTE
+            sed -i 's/^          //' notes.md
+          fi
+          cat >> notes.md <<'NOTE'
+
+          ### Downloads
+
+          | File | For |
+          | --- | --- |
+          | `Seizewell-*-arm64-v8a.apk` | Most Android phones from the last ~8 years |
+          | `Seizewell-*-armeabi-v7a.apk` | Older 32-bit Android phones |
+          | `Seizewell-*-x86_64.apk` | Android emulators and Chromebooks |
+          | `Seizewell-*-universal.apk` | Any Android device (larger download) |
+          | `Seizewell-*.aab` | Google Play upload |
+          | `Seizewell-*-ios-unsigned.ipa` | iOS sideloading (must be re-signed, e.g. with AltStore or your own Apple developer account) |
+
+          Verify downloads with `sha256sum -c SHA256SUMS.txt`.
+          NOTE
+          sed -i 's/^          //' notes.md
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Seizewell ${{ needs.prepare.outputs.version }}
+          body_path: notes.md
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.prepare.outputs.prerelease != 'true' }}
+          files: dist/*
+          fail_on_unmatched_files: true

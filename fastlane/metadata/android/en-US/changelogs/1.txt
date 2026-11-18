@@ -1,0 +1,1 @@
+First release: one-tap seizure timer with emergency-plan alerts, rescue-medication timer, triggers, medications and sleep, insights, a one-page clinic PDF report, CSV and FHIR export, and encrypted backups. Everything stays on your phone.

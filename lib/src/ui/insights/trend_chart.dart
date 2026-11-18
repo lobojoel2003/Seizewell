@@ -140,9 +140,6 @@ class TrendChart extends StatelessWidget {
                       for (var i = 0; i < buckets.length; i++)
                         FlSpot(i.toDouble(), buckets[i].count.toDouble()),
                     ],
-                    isCurved: true,
-                    preventCurveOverShooting: true,
-                    curveSmoothness: 0.25,
                     color: const Color(Brand.violet),
                     barWidth: 3,
                     isStrokeCapRound: true,
