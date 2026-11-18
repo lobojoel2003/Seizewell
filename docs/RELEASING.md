@@ -52,8 +52,10 @@ The workflow then:
 4. builds an unsigned iOS IPA;
 5. publishes a GitHub release with all files and `SHA256SUMS.txt`.
 
-A release can be rebuilt from an existing tag with **Actions → Release →
-Run workflow**.
+Alternatively, without pushing a tag yourself: open **Actions → Release →
+Run workflow**, pick the branch (usually `main`) and enter the tag
+(`v1.3.0`). The workflow builds that branch, checks the version, and GitHub
+creates the tag on the built commit when the release is published.
 
 ## Android signing
 

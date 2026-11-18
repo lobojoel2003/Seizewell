@@ -1,14 +1,16 @@
 name: Release
 
-# Push a tag like v1.2.3 (matching "version: 1.2.3+N" in pubspec.yaml) to
-# build, sign and publish a GitHub release. See docs/RELEASING.md.
+# Two ways to release (see docs/RELEASING.md):
+# - push a tag like v1.2.3 matching "version: 1.2.3+N" in pubspec.yaml, or
+# - Actions → Release → Run workflow on a branch with the tag name; the
+#   release is built from that branch and GitHub creates the tag on publish.
 on:
   push:
     tags: ['v*.*.*']
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to (re)build, e.g. v1.0.0
+        description: Release tag, e.g. v1.0.0 (created from the selected branch if it doesn't exist)
         required: true
 
 permissions:
@@ -21,6 +23,8 @@ concurrency:
 env:
   FLUTTER_VERSION: '3.50.0'
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  # The commit to build: the pushed tag, or the branch a manual run used.
+  SOURCE_REF: ${{ github.event_name == 'push' && github.ref || github.sha }}
 
 jobs:
   prepare:
@@ -33,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.SOURCE_REF }}
 
       - name: Read version from pubspec.yaml
         id: version
@@ -84,7 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.SOURCE_REF }}
 
       - uses: actions/setup-java@v6
         with:
@@ -170,7 +174,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.SOURCE_REF }}
 
       - uses: subosito/flutter-action@v2
         with:
@@ -241,6 +245,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           name: Seizewell ${{ needs.prepare.outputs.version }}
           body_path: notes.md
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
