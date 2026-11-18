@@ -150,7 +150,8 @@ One page, built on the phone, for the neurologist:
 - **Triggers, sleep** (including how many seizures followed a short night)
   and **current medications**.
 
-Choose 30 days to a year, US Letter or A4, then share or print. Data can also
+Choose 30 days to a year, US Letter or A4, then share or print
+([sample report, fictional data](docs/sample-report.pdf)). Data can also
 be exported as **CSV** (seizures, medication changes, sleep) or as a
 **FHIR R4 Bundle** — seizures as SNOMED CT 91175000 Observations, sleep as
 LOINC 93832-4 Observations, plus MedicationStatements. See
