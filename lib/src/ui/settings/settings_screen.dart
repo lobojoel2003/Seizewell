@@ -230,7 +230,7 @@ class SettingsScreen extends StatelessWidget {
                                 color: theme.colorScheme.primary,
                               ),
                               const SizedBox(width: 16),
-                              const Text('Theme'),
+                              Text('Theme', style: theme.textTheme.bodyLarge),
                             ],
                           ),
                           const SizedBox(height: 10),

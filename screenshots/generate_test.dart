@@ -167,6 +167,11 @@ void main() {
     await tester.tap(find.text('More'));
     await h.settle(tester);
     await _shot(tester, '12-more');
+    if (Platform.environment['SEIZEWELL_EXTRA_SHOTS'] != null) {
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, -900));
+      await h.settle(tester);
+      await _shot(tester, '12b-more-bottom');
+    }
     await h.dispose(tester);
   });
 
