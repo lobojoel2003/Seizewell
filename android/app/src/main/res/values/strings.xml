@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Seizewell</string>
+    <string name="widget_label">Seizure timer</string>
+    <string name="widget_description">One tap starts the Seizewell seizure timer.</string>
+    <string name="widget_start">Start</string>
+    <string name="widget_subtitle">seizure timer</string>
+    <string name="tile_label">Seizure timer</string>
+    <string name="tile_subtitle">Tap to start</string>
+</resources>
