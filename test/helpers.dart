@@ -40,13 +40,11 @@ class RecordingAlerts implements SeizureAlerts {
   @override
   Future<void> requestPreciseAlerts() async {}
 
+  /// Records 'sync' (threshold alarm armed) or 'sync:rescue' (follow-up
+  /// alarm after a rescue dose).
   @override
-  Future<void> seizureStarted(Seizure seizure, EmergencyPlan plan) async =>
-      calls.add('started');
-
-  @override
-  Future<void> rescueGiven(DateTime at, EmergencyPlan plan) async =>
-      calls.add('rescue');
+  Future<void> sync(Seizure seizure, EmergencyPlan plan) async =>
+      calls.add(seizure.rescueGivenAt == null ? 'sync' : 'sync:rescue');
 
   @override
   Future<void> seizureEnded() async => calls.add('ended');

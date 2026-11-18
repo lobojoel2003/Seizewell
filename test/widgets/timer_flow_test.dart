@@ -27,7 +27,7 @@ void main() {
     expect(find.text('Seizure in progress'), findsOneWidget);
     expect(find.text('00:00'), findsOneWidget);
     expect(find.text('While you time it'), findsOneWidget);
-    expect(h.alerts.calls, contains('started'));
+    expect(h.alerts.calls, ['init', 'sync']);
     expect(h.platform.screenOn, isTrue);
     expect(await h.db.activeSeizure(), isNotNull);
 
@@ -44,7 +44,7 @@ void main() {
     await tester.tap(find.byKey(const Key('rescue-given')));
     await h.settle(tester);
     expect(find.textContaining('Rescue given'), findsWidgets);
-    expect(h.alerts.calls, contains('rescue'));
+    expect(h.alerts.calls.last, 'sync:rescue');
 
     await tester.tap(find.text('Call 911'));
     expect(h.platform.dialled, ['911']);

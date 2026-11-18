@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../app_services.dart';
+import '../../data/queries.dart';
 import '../../domain/emergency_plan.dart';
 import '../widgets/common.dart';
 
@@ -79,6 +80,9 @@ class _EmergencyPlanScreenState extends State<EmergencyPlanScreen> {
         ],
       ),
     );
+    // A seizure being timed right now follows the new thresholds.
+    final active = await _s.db.activeSeizure();
+    if (active != null) await _s.alerts.sync(active, _s.settings.plan);
     if (!mounted) return;
     Navigator.pop(context);
     showMessage(context, 'Emergency plan saved');

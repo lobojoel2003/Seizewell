@@ -19,8 +19,13 @@ abstract interface class SeizureAlerts {
   Future<bool> requestPermission();
   Future<bool> canUsePreciseAlerts();
   Future<void> requestPreciseAlerts();
-  Future<void> seizureStarted(Seizure seizure, EmergencyPlan plan);
-  Future<void> rescueGiven(DateTime at, EmergencyPlan plan);
+
+  /// Shows the running stopwatch for [seizure] and arms exactly the alarm
+  /// that fits its state: the plan threshold before a rescue dose, or the
+  /// "call for help" follow-up after one. Safe to call repeatedly.
+  Future<void> sync(Seizure seizure, EmergencyPlan plan);
+
+  /// Removes the stopwatch and every pending alarm.
   Future<void> seizureEnded();
 }
 
@@ -40,10 +45,7 @@ class NoopSeizureAlerts implements SeizureAlerts {
   Future<void> requestPreciseAlerts() async {}
 
   @override
-  Future<void> seizureStarted(Seizure seizure, EmergencyPlan plan) async {}
-
-  @override
-  Future<void> rescueGiven(DateTime at, EmergencyPlan plan) async {}
+  Future<void> sync(Seizure seizure, EmergencyPlan plan) async {}
 
   @override
   Future<void> seizureEnded() async {}
@@ -131,9 +133,9 @@ class LocalNotificationAlerts implements SeizureAlerts {
   }
 
   @override
-  Future<void> seizureStarted(Seizure seizure, EmergencyPlan plan) async {
+  Future<void> sync(Seizure seizure, EmergencyPlan plan) async {
+    if (seizure.endedAt != null) return seizureEnded();
     await _guard(() async {
-      await _plugin.cancel(id: _rescueId);
       await _plugin.show(
         id: _timerId,
         title: 'Seizure timer running',
@@ -167,31 +169,29 @@ class LocalNotificationAlerts implements SeizureAlerts {
           ),
         ),
       );
-      final at = seizure.startedAt.add(plan.alertAfter);
-      final rescue = plan.hasRescueMedication
-          ? 'Give ${plan.rescueMedication}'
-                '${plan.rescueDose.isEmpty ? '' : ' (${plan.rescueDose})'} '
-                'if prescribed, and call ${plan.emergencyNumber}.'
-          : 'Follow your emergency plan and call ${plan.emergencyNumber}.';
-      await _schedule(
-        _thresholdId,
-        at,
-        'Seizure has lasted ${formatDuration(plan.alertAfter)}',
-        rescue,
-      );
-    });
-  }
-
-  @override
-  Future<void> rescueGiven(DateTime at, EmergencyPlan plan) async {
-    await _guard(() async {
-      await _plugin.cancel(id: _thresholdId);
-      await _schedule(
-        _rescueId,
-        at.add(plan.callAfterRescue),
-        'Rescue medication given ${formatDuration(plan.callAfterRescue)} ago',
-        'If the seizure has not stopped, call ${plan.emergencyNumber} now.',
-      );
+      final rescueAt = seizure.rescueGivenAt;
+      if (rescueAt == null) {
+        await _plugin.cancel(id: _rescueId);
+        final advice = plan.hasRescueMedication
+            ? 'Give ${plan.rescueMedication}'
+                  '${plan.rescueDose.isEmpty ? '' : ' (${plan.rescueDose})'} '
+                  'if prescribed, and call ${plan.emergencyNumber}.'
+            : 'Follow your emergency plan and call ${plan.emergencyNumber}.';
+        await _schedule(
+          _thresholdId,
+          seizure.startedAt.add(plan.alertAfter),
+          'Seizure has lasted ${formatDuration(plan.alertAfter)}',
+          advice,
+        );
+      } else {
+        await _plugin.cancel(id: _thresholdId);
+        await _schedule(
+          _rescueId,
+          rescueAt.add(plan.callAfterRescue),
+          'Rescue medication given ${formatDuration(plan.callAfterRescue)} ago',
+          'If the seizure has not stopped, call ${plan.emergencyNumber} now.',
+        );
+      }
     });
   }
 
@@ -205,6 +205,8 @@ class LocalNotificationAlerts implements SeizureAlerts {
   }
 
   Future<void> _schedule(int id, DateTime at, String title, String body) async {
+    // Re-arming replaces any earlier alarm with the same id.
+    await _plugin.cancel(id: id);
     if (!at.isAfter(DateTime.now())) return;
     final precise = await canUsePreciseAlerts();
     await _plugin.zonedSchedule(

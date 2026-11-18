@@ -99,6 +99,25 @@ void main() {
     await target.close();
   });
 
+  test('a seizure being timed in the backup is restored as ended', () async {
+    await source.startSeizure(at: now, loggedBy: Reporter.caregiver);
+    final file = await BackupService(source).createBackup(
+      passphrase: 'correct horse battery',
+      directory: tmp,
+      now: now,
+    );
+    final target = openTestDatabase();
+    await BackupService(target)
+        .restoreBackup(file: file, passphrase: 'correct horse battery');
+    expect(await target.activeSeizure(), isNull);
+    final restored = (await target.allSeizures()).firstWhere(
+      (e) => e.startedAt == now,
+    );
+    expect(restored.seizure.durationKnown, isFalse);
+    expect(restored.seizure.detailsCompleted, isFalse);
+    await target.close();
+  });
+
   test('short passphrases are refused', () async {
     await expectLater(
       BackupService(source)

@@ -66,6 +66,7 @@ class SettingsScreen extends StatelessWidget {
     );
     if (!ok) return;
     await s.db.deleteEverything();
+    await s.alerts.seizureEnded();
     await s.settings.reload();
     if (context.mounted) showMessage(context, 'All data deleted.');
   }

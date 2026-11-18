@@ -16,7 +16,10 @@ void main() {
 
   group('seizure timer', () {
     test('start, end and duration', () async {
-      final s = await db.startSeizure(at: t0, loggedBy: Reporter.caregiver);
+      final s = (await db.startSeizure(
+        at: t0,
+        loggedBy: Reporter.caregiver,
+      )).seizure;
       expect((await db.activeSeizure())?.id, s.id);
 
       await db.endSeizure(
@@ -32,30 +35,63 @@ void main() {
     });
 
     test('a second start while timing returns the running seizure', () async {
-      final a = await db.startSeizure(at: t0, loggedBy: Reporter.patient);
-      final b = await db.startSeizure(
+      final a = (await db.startSeizure(
+        at: t0,
+        loggedBy: Reporter.patient,
+      )).seizure;
+      final b = (await db.startSeizure(
         at: t0.add(const Duration(seconds: 1)),
         loggedBy: Reporter.patient,
-      );
+      )).seizure;
       expect(b.id, a.id);
       expect(await db.select(db.seizures).get(), hasLength(1));
+      final again = await db.startSeizure(at: t0, loggedBy: Reporter.patient);
+      expect(again.created, isFalse);
+    });
+
+    test('a second "ended" never moves the end time', () async {
+      final s = (await db.startSeizure(
+        at: t0,
+        loggedBy: Reporter.patient,
+      )).seizure;
+      expect(
+        await db.endSeizure(s.id, t0.add(const Duration(seconds: 40))),
+        isTrue,
+      );
+      expect(
+        await db.endSeizure(s.id, t0.add(const Duration(minutes: 3))),
+        isFalse,
+      );
+      expect(
+        (await db.seizureEntry(s.id))!.duration,
+        const Duration(seconds: 40),
+      );
     });
 
     test('end before start is clamped to zero length', () async {
-      final s = await db.startSeizure(at: t0, loggedBy: Reporter.patient);
+      final s = (await db.startSeizure(
+        at: t0,
+        loggedBy: Reporter.patient,
+      )).seizure;
       await db.endSeizure(s.id, t0.subtract(const Duration(minutes: 1)));
       expect((await db.seizureEntry(s.id))!.duration, Duration.zero);
     });
 
     test('resume undoes an early end', () async {
-      final s = await db.startSeizure(at: t0, loggedBy: Reporter.patient);
+      final s = (await db.startSeizure(
+        at: t0,
+        loggedBy: Reporter.patient,
+      )).seizure;
       await db.endSeizure(s.id, t0.add(const Duration(seconds: 20)));
       await db.resumeSeizure(s.id);
       expect((await db.activeSeizure())?.id, s.id);
     });
 
     test('rescue medication is recorded', () async {
-      final s = await db.startSeizure(at: t0, loggedBy: Reporter.patient);
+      final s = (await db.startSeizure(
+        at: t0,
+        loggedBy: Reporter.patient,
+      )).seizure;
       final given = t0.add(const Duration(minutes: 5));
       await db.recordRescue(s.id, given, 'Midazolam nasal spray');
       final row = await db.seizureById(s.id);
@@ -94,7 +130,10 @@ void main() {
     });
 
     test('entries needing details are listed until completed', () async {
-      final s = await db.startSeizure(at: t0, loggedBy: Reporter.patient);
+      final s = (await db.startSeizure(
+        at: t0,
+        loggedBy: Reporter.patient,
+      )).seizure;
       await db.endSeizure(s.id, t0.add(const Duration(seconds: 30)));
       expect(await db.watchNeedingDetails().first, hasLength(1));
 
@@ -228,7 +267,7 @@ void main() {
     });
 
     test('delete everything clears data and re-seeds triggers', () async {
-      await db.startSeizure(at: t0, loggedBy: Reporter.patient);
+      (await db.startSeizure(at: t0, loggedBy: Reporter.patient)).seizure;
       await db.writeSetting('profile.name', 'Sam');
       await db.deleteEverything();
       expect(await db.select(db.seizures).get(), isEmpty);

@@ -15,11 +15,14 @@ Future<void> startSeizureTimer(
   NavigatorState navigator,
 ) async {
   unawaited(HapticFeedback.heavyImpact());
-  final seizure = await services.db.startSeizure(
+  final (:seizure, :created) = await services.db.startSeizure(
     at: services.clock.now(),
     loggedBy: services.settings.role,
   );
-  unawaited(services.alerts.seizureStarted(seizure, services.settings.plan));
+  // Re-opening a running timer must not re-arm (and so reset) its alarms.
+  if (created) {
+    unawaited(services.alerts.sync(seizure, services.settings.plan));
+  }
   openTimer(navigator);
 }
 

@@ -20,10 +20,20 @@ import 'seizure_ended_screen.dart';
 class ActiveSeizureScreen extends StatefulWidget {
   const ActiveSeizureScreen({super.key});
 
-  static int _openCount = 0;
-  static bool get isOpen => _openCount > 0;
+  static Route<void>? _current;
 
-  static Route<void> route() => PageRouteBuilder<void>(
+  /// The most recently created timer route, while it is on a navigator.
+  static Route<void>? get currentRoute =>
+      (_current?.isActive ?? false) ? _current : null;
+
+  /// Whether a timer screen is showing (or animating in). Set synchronously
+  /// when the route is pushed, so two quick launches can't open two timers.
+  static bool get isOpen => currentRoute != null;
+
+  /// Screens that currently want the display kept on.
+  static int _keepAwake = 0;
+
+  static Route<void> route() => _current = PageRouteBuilder<void>(
     settings: const RouteSettings(name: '/timer'),
     fullscreenDialog: true,
     transitionDuration: const Duration(milliseconds: 260),
@@ -52,18 +62,20 @@ class _ActiveSeizureScreenState extends State<ActiveSeizureScreen> {
   Seizure? _seizure;
   bool _loaded = false;
   bool _ending = false;
+  bool _rescueBusy = false;
   _Phase? _lastPhase;
 
   @override
   void initState() {
     super.initState();
-    ActiveSeizureScreen._openCount++;
     _s = context.services;
-    unawaited(_s.platform.keepScreenOn(true));
+    if (ActiveSeizureScreen._keepAwake++ == 0) {
+      unawaited(_s.platform.keepScreenOn(true));
+    }
     _sub = _s.db.watchActiveSeizure().listen((s) {
       if (!mounted) return;
       if (s == null && _loaded && !_ending) {
-        Navigator.of(context).maybePop();
+        _close();
         return;
       }
       setState(() {
@@ -78,11 +90,23 @@ class _ActiveSeizureScreenState extends State<ActiveSeizureScreen> {
 
   @override
   void dispose() {
-    ActiveSeizureScreen._openCount--;
     _ticker?.cancel();
     _sub?.cancel();
-    unawaited(_s.platform.keepScreenOn(false));
+    if (--ActiveSeizureScreen._keepAwake == 0) {
+      unawaited(_s.platform.keepScreenOn(false));
+    }
     super.dispose();
+  }
+
+  /// Removes this screen's own route, wherever it is in the stack.
+  void _close() {
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isActive) return;
+    if (route.isCurrent) {
+      Navigator.of(context).pop();
+    } else {
+      Navigator.of(context).removeRoute(route);
+    }
   }
 
   EmergencyPlan get _plan => _s.settings.plan;
@@ -132,25 +156,46 @@ class _ActiveSeizureScreenState extends State<ActiveSeizureScreen> {
     await _s.db.endSeizure(s.id, _s.clock.now());
     unawaited(_s.alerts.seizureEnded());
     if (!mounted) return;
-    await Navigator.of(context).pushReplacement(SeizureEndedScreen.route(s.id));
+    final route = ModalRoute.of(context);
+    if (route != null && route.isCurrent) {
+      await Navigator.of(context)
+          .pushReplacement(SeizureEndedScreen.route(s.id));
+    } else {
+      _close();
+    }
   }
 
+  /// "Rescue given" records the dose once; undoing it needs a confirmation
+  /// so a double tap in a hurry can't erase it.
   Future<void> _rescue() async {
     final s = _seizure;
-    if (s == null) return;
-    final now = _s.clock.now();
-    if (s.rescueGivenAt != null) {
-      await _s.db.clearRescue(s.id);
-      unawaited(_s.alerts.seizureStarted(s, _plan));
-      return;
+    if (s == null || _rescueBusy) return;
+    _rescueBusy = true;
+    try {
+      if (s.rescueGivenAt != null) {
+        final undo = await confirm(
+          context,
+          title: 'Undo rescue medication?',
+          message:
+              'Only do this if the rescue dose was marked by mistake. The '
+              'reminder to call for help will be cancelled.',
+          confirmLabel: 'Undo',
+          destructive: true,
+        );
+        if (!undo) return;
+        await _s.db.clearRescue(s.id);
+      } else {
+        unawaited(HapticFeedback.mediumImpact());
+        await _s.db.recordRescue(
+          s.id,
+          _s.clock.now(),
+          _plan.hasRescueMedication ? _plan.rescueMedication : null,
+        );
+      }
+      unawaited(_s.alerts.sync(await _s.db.seizureById(s.id), _plan));
+    } finally {
+      _rescueBusy = false;
     }
-    unawaited(HapticFeedback.mediumImpact());
-    await _s.db.recordRescue(
-      s.id,
-      now,
-      _plan.hasRescueMedication ? _plan.rescueMedication : null,
-    );
-    unawaited(_s.alerts.rescueGiven(now, _plan));
   }
 
   Future<void> _startedEarlier(Duration by) async {
@@ -160,7 +205,7 @@ class _ActiveSeizureScreenState extends State<ActiveSeizureScreen> {
       s.id,
       s.startedAt.subtract(by),
     );
-    unawaited(_s.alerts.seizureStarted(updated, _plan));
+    unawaited(_s.alerts.sync(updated, _plan));
   }
 
   Future<void> _discard() async {
@@ -179,7 +224,7 @@ class _ActiveSeizureScreenState extends State<ActiveSeizureScreen> {
     _ending = true;
     await _s.db.deleteSeizure(s.id);
     unawaited(_s.alerts.seizureEnded());
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) _close();
   }
 
   @override
@@ -673,9 +718,11 @@ class _ActionRow extends StatelessWidget {
                 style: style(strong: emphasiseRescue),
                 onPressed: onRescue,
                 icon: Icon(
-                  rescueGiven ? Icons.undo_rounded : Icons.medication_rounded,
+                  rescueGiven
+                      ? Icons.check_circle_rounded
+                      : Icons.medication_rounded,
                 ),
-                label: Text(rescueGiven ? 'Undo rescue' : 'Rescue given'),
+                label: const Text('Rescue given'),
               ),
             ),
             const SizedBox(width: 10),

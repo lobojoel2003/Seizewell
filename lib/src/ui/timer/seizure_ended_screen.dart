@@ -31,8 +31,13 @@ class SeizureEndedScreen extends StatelessWidget {
     await services.db.resumeSeizure(s.id);
     final active = await services.db.activeSeizure();
     if (active == null) return;
-    unawaited(services.alerts.seizureStarted(active, services.settings.plan));
-    await navigator.pushReplacement(ActiveSeizureScreen.route());
+    // Restores whichever alarm applies, including the post-rescue one.
+    unawaited(services.alerts.sync(active, services.settings.plan));
+    if (ActiveSeizureScreen.isOpen) {
+      navigator.pop();
+    } else {
+      await navigator.pushReplacement(ActiveSeizureScreen.route());
+    }
   }
 
   @override

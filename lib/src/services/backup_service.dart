@@ -123,6 +123,13 @@ class BackupService {
         if (!backupTables.contains('triggers')) {
           await _db.seedBuiltInTriggers();
         }
+        // A seizure that was being timed when the backup was made is long
+        // over: keep it, but as "duration unknown" and needing details.
+        await _db.customStatement(
+          'UPDATE main.seizures SET ended_at = started_at, '
+          'duration_known = 0, details_completed = 0 '
+          'WHERE ended_at IS NULL',
+        );
         restored =
             (await _db
                     .customSelect('SELECT count(*) AS c FROM main.seizures')

@@ -13,6 +13,7 @@ import 'ui/seizure/seizure_editor_screen.dart';
 import 'ui/shell.dart';
 import 'ui/sleep/sleep_sheet.dart';
 import 'ui/theme.dart';
+import 'ui/timer/active_seizure_screen.dart';
 
 class SeizewellApp extends StatefulWidget {
   const SeizewellApp({super.key, required this.services});
@@ -25,6 +26,7 @@ class SeizewellApp extends StatefulWidget {
 
 class _SeizewellAppState extends State<SeizewellApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
+  final _routes = _RouteStack();
   StreamSubscription<LaunchRequest>? _launchSub;
   late final AppLifecycleListener _lifecycle;
   DateTime? _hiddenAt;
@@ -58,10 +60,14 @@ class _SeizewellAppState extends State<SeizewellApp> {
 
   NavigatorState? get _nav => _navigatorKey.currentState;
 
+  /// Shows the running seizure, if any, and makes sure its stopwatch
+  /// notification and alarms are in place (after a restart, for example).
   Future<void> _openActiveTimer() async {
     final active = await _s.db.activeSeizure();
     final nav = _nav;
-    if (active != null && nav != null) openTimer(nav);
+    if (active == null || nav == null) return;
+    unawaited(_s.alerts.sync(active, _s.settings.plan));
+    openTimer(nav);
   }
 
   void _onSettingsChanged() {
@@ -109,12 +115,18 @@ class _SeizewellAppState extends State<SeizewellApp> {
 
   Future<void> _onLockChanged() async {
     if (!_s.lock.locked) return;
-    // Hide whatever diary screens were open; keep a running timer visible.
+    // Hide whatever diary screens were open, but never the running timer:
+    // remove every route except the root and the timer, without animation.
     final nav = _nav;
     if (nav == null) return;
-    nav.popUntil((route) => route.isFirst);
+    final timer = ActiveSeizureScreen.currentRoute;
+    for (final route in _routes.routes.reversed.toList()) {
+      if (route.isFirst || identical(route, timer) || !route.isActive) continue;
+      nav.removeRoute(route);
+    }
     final Seizure? active = await _s.db.activeSeizure();
-    if (active != null && _nav != null) openTimer(_nav!);
+    final navNow = _nav;
+    if (active != null && navNow != null) openTimer(navNow);
   }
 
   @override
@@ -125,6 +137,7 @@ class _SeizewellAppState extends State<SeizewellApp> {
         listenable: _s.settings,
         builder: (context, _) => MaterialApp(
           navigatorKey: _navigatorKey,
+          navigatorObservers: [_routes],
           title: 'Seizewell',
           debugShowCheckedModeBanner: false,
           theme: buildTheme(Brightness.light),
@@ -134,6 +147,34 @@ class _SeizewellAppState extends State<SeizewellApp> {
         ),
       ),
     );
+  }
+}
+
+/// Keeps track of the navigator's routes so the lock can remove diary
+/// screens while leaving the timer in place.
+class _RouteStack extends NavigatorObserver {
+  final routes = <Route<dynamic>>[];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      routes.add(route);
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      routes.remove(route);
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      routes.remove(route);
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    final i = oldRoute == null ? -1 : routes.indexOf(oldRoute);
+    if (i >= 0 && newRoute != null) {
+      routes[i] = newRoute;
+    } else if (newRoute != null) {
+      routes.add(newRoute);
+    }
   }
 }
 

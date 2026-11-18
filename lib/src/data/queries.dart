@@ -43,14 +43,15 @@ extension SeizureQueries on AppDatabase {
       (select(seizures)..where((s) => s.id.equals(id))).getSingle();
 
   /// Starts timing a seizure. If one is already being timed, returns it
-  /// instead of starting a second one (double taps are common under stress).
-  Future<Seizure> startSeizure({
+  /// instead of starting a second one (double taps are common under stress);
+  /// `created` tells the two cases apart.
+  Future<({Seizure seizure, bool created})> startSeizure({
     required DateTime at,
     required Reporter loggedBy,
   }) {
     return transaction(() async {
       final existing = await activeSeizure();
-      if (existing != null) return existing;
+      if (existing != null) return (seizure: existing, created: false);
       final id = await into(seizures).insert(
         SeizuresCompanion.insert(
           startedAt: at,
@@ -59,16 +60,23 @@ extension SeizureQueries on AppDatabase {
           updatedAt: Value(at),
         ),
       );
-      return seizureById(id);
+      return (seizure: await seizureById(id), created: true);
     });
   }
 
-  Future<void> endSeizure(int id, DateTime at) async {
+  /// Ends the seizure if it is still running. Returns false if it had
+  /// already ended (for example a second "Seizure ended" tap), so the first
+  /// end time is never overwritten.
+  Future<bool> endSeizure(int id, DateTime at) async {
     final s = await seizureById(id);
     final end = at.isBefore(s.startedAt) ? s.startedAt : at;
-    await (update(seizures)..where((t) => t.id.equals(id))).write(
-      SeizuresCompanion(endedAt: Value(end), updatedAt: Value(at)),
-    );
+    final updated =
+        await (update(
+          seizures,
+        )..where((t) => t.id.equals(id) & t.endedAt.isNull())).write(
+          SeizuresCompanion(endedAt: Value(end), updatedAt: Value(at)),
+        );
+    return updated > 0;
   }
 
   /// "It started earlier": moves the start of the running seizure back.

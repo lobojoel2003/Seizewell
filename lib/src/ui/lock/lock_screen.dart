@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 
 import '../../app_services.dart';
@@ -5,6 +7,7 @@ import '../../data/database.dart';
 import '../../data/queries.dart';
 import '../actions.dart';
 import '../theme.dart';
+import '../timer/active_seizure_screen.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/big_start_button.dart';
 
@@ -23,10 +26,21 @@ class _LockScreenState extends State<LockScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final s = context.services;
-      if (!s.lock.overLockScreen) _unlock();
-    });
+    unawaited(_autoPrompt());
+  }
+
+  /// Offers the fingerprint prompt by itself — unless a seizure is being
+  /// timed or a launch from the widget/tile is about to open the timer, where
+  /// a system dialog would cover the stopwatch.
+  Future<void> _autoPrompt() async {
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+    final s = context.services;
+    if (s.lock.overLockScreen || ActiveSeizureScreen.isOpen) return;
+    if (!(ModalRoute.of(context)?.isCurrent ?? false)) return;
+    if (await s.db.activeSeizure() != null) return;
+    if (!mounted || ActiveSeizureScreen.isOpen) return;
+    await _unlock();
   }
 
   Future<void> _unlock() async {

@@ -22,6 +22,9 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingAction: Map<String, Any>? = null
     private var shownOverLockScreen = false
 
+    /** True once Dart has asked for the initial action, i.e. it is listening. */
+    private var dartReady = false
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         channel =
@@ -29,6 +32,7 @@ class MainActivity : FlutterFragmentActivity() {
                 setMethodCallHandler { call, result ->
                     when (call.method) {
                         "initialAction" -> {
+                            dartReady = true
                             result.success(pendingAction)
                             pendingAction = null
                         }
@@ -42,13 +46,18 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleIntent(intent, coldStart = true)
+        // A START_TIMER intent re-delivered from Recents (after Android killed
+        // the process) or with restored state is stale: don't start a timer.
+        val fromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        if (savedInstanceState == null && !fromHistory) {
+            handleIntent(intent)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIntent(intent, coldStart = false)
+        handleIntent(intent)
     }
 
     override fun onStop() {
@@ -57,7 +66,7 @@ class MainActivity : FlutterFragmentActivity() {
         if (shownOverLockScreen && !isChangingConfigurations) showOverLockScreen(false)
     }
 
-    private fun handleIntent(intent: Intent?, coldStart: Boolean) {
+    private fun handleIntent(intent: Intent?) {
         if (intent?.action != LaunchIntents.ACTION_START_TIMER) return
         // Consume the action so recreating the activity doesn't repeat it.
         intent.action = Intent.ACTION_MAIN
@@ -65,10 +74,12 @@ class MainActivity : FlutterFragmentActivity() {
         if (overLockScreen) showOverLockScreen(true)
         val payload = mapOf("action" to "start_timer", "overLockScreen" to overLockScreen)
         val ch = channel
-        if (coldStart || ch == null) {
-            pendingAction = payload
-        } else {
+        if (dartReady && ch != null) {
             ch.invokeMethod("onAction", payload)
+        } else {
+            // Dart is still starting (opening the encrypted database); it
+            // collects this with "initialAction" once it is listening.
+            pendingAction = payload
         }
     }
 
